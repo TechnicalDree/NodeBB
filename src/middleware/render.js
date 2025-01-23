@@ -34,6 +34,15 @@ module.exports = function (middleware) {
 		res.render = async function renderOverride(template, options, fn) {
 			const self = this;
 			const { req } = this;
+
+			const setCacheControlIfLoggedIn = (req, res) => {
+				if (req.loggedIn) {
+					res.set('cache-control', 'private');
+				}
+			};
+
+			const shouldAbortRender = res => res.headersSent;
+
 			async function renderMethod(template, options, fn) {
 				options = options || {};
 				if (typeof options === 'function') {
@@ -48,18 +57,16 @@ module.exports = function (middleware) {
 				options.url = (req.baseUrl + req.path.replace(/^\/api/, ''));
 				options.bodyClass = helpers.buildBodyClass(req, res, options);
 
-				if (req.loggedIn) {
-					res.set('cache-control', 'private');
-				}
+				setCacheControlIfLoggedIn(req, res);
 
 				const buildResult = await plugins.hooks.fire(`filter:${template}.build`, {
 					req: req,
 					res: res,
 					templateData: options,
 				});
-				if (res.headersSent) {
-					return;
-				}
+
+				if (shouldAbortRender(res)) return;
+
 				const templateToRender = buildResult.templateData.templateToRender || template;
 
 				const renderResult = await plugins.hooks.fire('filter:middleware.render', {
@@ -67,9 +74,9 @@ module.exports = function (middleware) {
 					res: res,
 					templateData: buildResult.templateData,
 				});
-				if (res.headersSent) {
-					return;
-				}
+
+				if (shouldAbortRender(res)) return;
+
 				options = renderResult.templateData;
 				options._header = {
 					tags: await meta.tags.parse(req, renderResult, res.locals.metaTags, res.locals.linkTags),
@@ -84,11 +91,10 @@ module.exports = function (middleware) {
 				res.locals.template = template;
 				options._locals = undefined;
 
-				if (res.locals.isAPI && req.route && req.route.path === '/api/') {
-					options.title = '[[pages:home]]';
-				}
-
 				if (res.locals.isAPI) {
+					if (req.route && req.route.path === '/api/') {
+						options.title = '[[pages:home]]';
+					}
 					req.app.set('json spaces', global.env === 'development' || req.query.pretty ? 4 : 0);
 					return res.json(options);
 				}
