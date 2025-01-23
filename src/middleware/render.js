@@ -84,10 +84,11 @@ module.exports = function (middleware) {
 				res.locals.template = template;
 				options._locals = undefined;
 
+				if (res.locals.isAPI && req.route && req.route.path === '/api/') {
+					options.title = '[[pages:home]]';
+				}
+
 				if (res.locals.isAPI) {
-					if (req.route && req.route.path === '/api/') {
-						options.title = '[[pages:home]]';
-					}
 					req.app.set('json spaces', global.env === 'development' || req.query.pretty ? 4 : 0);
 					return res.json(options);
 				}
